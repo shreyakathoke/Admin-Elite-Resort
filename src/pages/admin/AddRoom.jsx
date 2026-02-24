@@ -44,9 +44,9 @@ export default function AddRoom() {
           roomType: "Deluxe Room",
           price: "4500",
           capacity: "2",
-          availability: "available", // ✅ available | unavailable
+          availability: "available", 
           description: "Luxury deluxe room with balcony and premium interior.",
-          imageUrl: "", // existing image url if any
+          imageUrl: "", 
         };
 
         setForm({
@@ -65,7 +65,7 @@ export default function AddRoom() {
     })();
   }, [isEdit, id]);
 
-  // ✅ Cleanup object url to avoid memory leak
+  
   useEffect(() => {
     return () => {
       if (previewUrl && previewUrl.startsWith("blob:")) {

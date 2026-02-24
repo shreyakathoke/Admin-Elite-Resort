@@ -1,37 +1,38 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../../styles/adminLogin.css";
+import { adminLogin } from "../../api/adminApi";
 
 export default function AdminLogin() {
   const navigate = useNavigate();
 
-  const [form, setForm] = useState({
-    email: "",
-    password: "",
-  });
-
+  const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
     setError("");
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setError("");
+    setLoading(true);
 
-    // ✅ Demo credentials
-    const ADMIN_EMAIL = "admin@eliteresort.com";
-    const ADMIN_PASSWORD = "admin123";
+    try {
+      const data = await adminLogin(form);
 
-    if (
-      form.email === ADMIN_EMAIL &&
-      form.password === ADMIN_PASSWORD
-    ) {
+      // ✅ store token
+      localStorage.setItem("admin_token", data.token);
       localStorage.setItem("admin_auth", "true");
+      localStorage.setItem("admin_email", data.admin.email);
+
       navigate("/admin/dashboard");
-    } else {
-      setError("Invalid email or password");
+    } catch (err) {
+      setError(err.message || "Invalid email or password");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -39,9 +40,7 @@ export default function AdminLogin() {
     <div className="admin-login-wrapper">
       <div className="admin-login-card">
         <h2 className="login-title">Elite Resort Admin</h2>
-        <p className="login-subtitle">
-          Sign in to access the admin dashboard
-        </p>
+        <p className="login-subtitle">Sign in to access the admin dashboard</p>
 
         {error && <div className="alert alert-danger">{error}</div>}
 
@@ -56,6 +55,7 @@ export default function AdminLogin() {
               value={form.email}
               onChange={handleChange}
               required
+              autoComplete="username"
             />
           </div>
 
@@ -69,11 +69,12 @@ export default function AdminLogin() {
               value={form.password}
               onChange={handleChange}
               required
+              autoComplete="current-password"
             />
           </div>
 
-          <button type="submit" className="btn btn-primary w-100">
-            Login
+          <button type="submit" className="btn btn-primary w-100" disabled={loading}>
+            {loading ? "Logging in..." : "Login"}
           </button>
         </form>
       </div>

@@ -23,18 +23,32 @@ export default function AdminLogin() {
     try {
       const data = await adminLogin(form);
 
-      // ✅ Save token + auth
-      localStorage.setItem("admin_token", data.token);
-      localStorage.setItem("admin_auth", "true");
-      localStorage.setItem("admin_email", data?.admin?.email || form.email);
+      // ✅ Token can come with different names depending on backend
+      const token =
+        data?.token ||
+        data?.jwt ||
+        data?.accessToken ||
+        data?.data?.token ||
+        data?.data?.jwt;
 
-      navigate("/admin/dashboard");
+      // ✅ Save login state
+      if (token) localStorage.setItem("admin_token", token);
+      localStorage.setItem("admin_auth", "true");
+      localStorage.setItem(
+        "admin_email",
+        data?.admin?.email || data?.email || form.email
+      );
+
+      navigate("/admin/dashboard", { replace: true });
     } catch (err) {
-      // Axios error handling
+      console.log("ADMIN LOGIN ERROR:", err?.response?.data || err);
+
       const msg =
         err?.response?.data?.message ||
+        err?.response?.data?.error ||
         err?.message ||
         "Invalid email or password";
+
       setError(msg);
     } finally {
       setLoading(false);
@@ -60,7 +74,6 @@ export default function AdminLogin() {
               value={form.email}
               onChange={handleChange}
               required
-              autoComplete="username"
               disabled={loading}
             />
           </div>
@@ -75,16 +88,11 @@ export default function AdminLogin() {
               value={form.password}
               onChange={handleChange}
               required
-              autoComplete="current-password"
               disabled={loading}
             />
           </div>
 
-          <button
-            type="submit"
-            className="btn btn-primary w-100"
-            disabled={loading}
-          >
+          <button type="submit" className="btn btn-primary w-100" disabled={loading}>
             {loading ? "Logging in..." : "Login"}
           </button>
         </form>

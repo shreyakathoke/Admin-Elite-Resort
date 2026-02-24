@@ -1,7 +1,11 @@
 import api from "./api";
 
-export const adminLogin = async (payload) => {
-  // baseURL already has /api
-  const res = await api.post("/auth/admin/login", payload);
+export const adminGetRooms = async () => {
+  const res = await api.get("/api/admin/rooms");
+  return res.data;
+};
+
+export const adminGetAllProfiles = async () => {
+  const res = await api.get("/api/profile/all");
   return res.data;
 };

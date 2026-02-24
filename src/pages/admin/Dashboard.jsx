@@ -1,41 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import "../../styles/dashboard.css";
+import { adminGetRooms, adminGetAllProfiles } from "../../api/adminApi";
 
-const mockUsers = [
-  { id: 1, name: "Aarav Patil", city: "Nagpur", status: "active" },
-  { id: 2, name: "Sneha Kale", city: "Mumbai", status: "active" },
-  { id: 3, name: "Rohit Sharma", city: "Pune", status: "inactive" },
-  { id: 4, name: "Meera Joshi", city: "Nagpur", status: "active" },
-  { id: 5, name: "Kabir Singh", city: "Nashik", status: "active" },
-];
-
-const mockResorts = [
-  { id: 101, name: "Elite Resort – Sea View", city: "Goa", category: "Luxury", status: "active", rooms: 62, priceFrom: 8999 },
-  { id: 102, name: "Elite Resort – Hill Retreat", city: "Mahabaleshwar", category: "Nature", status: "active", rooms: 40, priceFrom: 6999 },
-  { id: 103, name: "Elite Resort – City Premium", city: "Mumbai", category: "Business", status: "active", rooms: 55, priceFrom: 9999 },
-  { id: 104, name: "Elite Resort – Budget Stay", city: "Nagpur", category: "Budget", status: "inactive", rooms: 28, priceFrom: 2999 },
-  { id: 105, name: "Elite Resort – Lake Villa", city: "Udaipur", category: "Luxury", status: "active", rooms: 22, priceFrom: 14999 },
-];
-
-const mockContacts = [
-  { id: 201, name: "Ananya", email: "ananya@mail.com", query: "Room availability for 3 nights?", date: "2026-02-18", status: "pending" },
-  { id: 202, name: "Sahil", email: "sahil@mail.com", query: "Wedding event booking", date: "2026-02-20", status: "pending" },
-  { id: 203, name: "Isha", email: "isha@mail.com", query: "Pool timings?", date: "2026-02-21", status: "resolved" },
-];
-
-function normalizeCity(city) {
-  return (city || "").trim().replace(/\s+/g, " ").toLowerCase();
+/** Helpers */
+function normalizeText(s) {
+  return (s || "").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 function groupCount(list, keyFn) {
   const map = new Map();
   for (const item of list) {
-    const key = keyFn(item);
+    const key = keyFn(item) || "unknown";
     map.set(key, (map.get(key) || 0) + 1);
   }
   return Array.from(map.entries()).map(([label, value]) => ({ label, value }));
 }
 
+/** UI Components */
 function MetricCard({ title, value, icon, iconBg, iconColor }) {
   return (
     <div className="col-12 col-sm-6 col-xl-3">
@@ -88,63 +69,149 @@ function BarList({ title, items }) {
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
-  const [users, setUsers] = useState([]);
-  const [resorts, setResorts] = useState([]);
-  const [contacts, setContacts] = useState([]);
+  const [rooms, setRooms] = useState([]);     // from /api/admin/rooms
+  const [profiles, setProfiles] = useState([]); // from /api/profile/all
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    setTimeout(() => {
-      setUsers(mockUsers);
-      setResorts(mockResorts);
-      setContacts(mockContacts);
-      setLoading(false);
-    }, 400);
+    let mounted = true;
+
+    (async () => {
+      try {
+        setLoading(true);
+        setError("");
+
+        // fetch in parallel
+        const [roomsData, profilesData] = await Promise.all([
+          adminGetRooms(),
+          adminGetAllProfiles(),
+        ]);
+
+        if (!mounted) return;
+
+        // roomsData = array of rooms
+        // profilesData = array of profiles
+        setRooms(Array.isArray(roomsData) ? roomsData : []);
+        setProfiles(Array.isArray(profilesData) ? profilesData : []);
+      } catch (err) {
+        console.log("DASHBOARD FETCH ERROR:", err?.response?.data || err);
+
+        const msg =
+          err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          err?.message ||
+          "Failed to load dashboard data";
+
+        if (mounted) setError(msg);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
+  /** KPI Metrics */
   const metrics = useMemo(() => {
-    const totalUsers = users.length;
-    const totalRooms = resorts.reduce((acc, r) => acc + r.rooms, 0);
-    const activeRooms = resorts.filter(r => r.status === "active")
-                               .reduce((acc, r) => acc + r.rooms, 0);
+    const totalUsers = profiles.length;
+
+    // total rooms = count of rooms (from backend)
+    const totalRooms = rooms.length;
+
+    // active rooms = available = true
+    const activeRooms = rooms.filter((r) => r?.available === true).length;
     const inactiveRooms = totalRooms - activeRooms;
 
     return { totalUsers, totalRooms, activeRooms, inactiveRooms };
-  }, [users, resorts]);
+  }, [profiles, rooms]);
 
-  const resortsByCategory = useMemo(() => {
-    return groupCount(resorts, r => r.category.toLowerCase());
-  }, [resorts]);
+  /** Rooms by Category (using room.type) */
+  const roomsByCategory = useMemo(() => {
+    return groupCount(rooms, (r) => normalizeText(r?.type));
+  }, [rooms]);
 
+  /** Users by City
+   * Your API doc profile fields: phone,address,idProof,photoUrl...
+   * City may not exist. We'll try: profile.city OR profile.address (first word) fallback.
+   */
   const usersByCity = useMemo(() => {
-    return groupCount(users, u => normalizeCity(u.city));
-  }, [users]);
+    return groupCount(profiles, (p) => {
+      if (p?.city) return normalizeText(p.city);
 
+      // fallback: use address as "city" like "Pune, Maharashtra..."
+      const addr = (p?.address || "").trim();
+      if (!addr) return "unknown";
+      const guess = addr.split(",")[0];
+      return normalizeText(guess);
+    });
+  }, [profiles]);
+
+  /** Active Rooms Table
+   * show available rooms (true), display: roomNumber + type + pricePerNight
+   */
   const activeRoomsList = useMemo(() => {
-    return resorts
-      .filter(r => r.status === "active")
-      .map(r => ({
-        name: r.name,
-        rooms: r.rooms,
-        price: r.priceFrom
+    return rooms
+      .filter((r) => r?.available === true)
+      .map((r) => ({
+        name: `Room ${r?.roomNumber || "-"} • ${r?.type || "Unknown"}`,
+        rooms: 1,
+        price: Number(r?.pricePerNight || 0),
       }));
-  }, [resorts]);
+  }, [rooms]);
+
+  if (loading) {
+    return (
+      <div className="container-fluid px-3 px-lg-4 py-4 dashboard-wrap">
+        <h2 className="page-title mb-4">Dashboard</h2>
+        <div className="card soft-card p-4">Loading dashboard...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="container-fluid px-3 px-lg-4 py-4 dashboard-wrap">
       <h2 className="page-title mb-4">Dashboard</h2>
 
+      {error && <div className="alert alert-danger mb-4">{error}</div>}
+
       {/* KPI */}
       <div className="row g-3 g-lg-4 mb-4">
-        <MetricCard title="Total Users" value={metrics.totalUsers} icon="bi-people" iconBg="bg-primary-subtle" iconColor="text-primary" />
-        <MetricCard title="Total Rooms" value={metrics.totalRooms} icon="bi-building" iconBg="bg-success-subtle" iconColor="text-success" />
-        <MetricCard title="Active Rooms" value={metrics.activeRooms} icon="bi-check-circle" iconBg="bg-info-subtle" iconColor="text-info" />
-        <MetricCard title="Inactive Rooms" value={metrics.inactiveRooms} icon="bi-x-circle" iconBg="bg-danger-subtle" iconColor="text-danger" />
+        <MetricCard
+          title="Total Users"
+          value={metrics.totalUsers}
+          icon="bi-people"
+          iconBg="bg-primary-subtle"
+          iconColor="text-primary"
+        />
+        <MetricCard
+          title="Total Rooms"
+          value={metrics.totalRooms}
+          icon="bi-building"
+          iconBg="bg-success-subtle"
+          iconColor="text-success"
+        />
+        <MetricCard
+          title="Active Rooms"
+          value={metrics.activeRooms}
+          icon="bi-check-circle"
+          iconBg="bg-info-subtle"
+          iconColor="text-info"
+        />
+        <MetricCard
+          title="Inactive Rooms"
+          value={metrics.inactiveRooms}
+          icon="bi-x-circle"
+          iconBg="bg-danger-subtle"
+          iconColor="text-danger"
+        />
       </div>
 
       {/* Charts */}
       <div className="row g-3 g-lg-4 mb-4">
         <div className="col-12 col-lg-6">
-          <BarList title="Rooms by Category" items={resortsByCategory} />
+          <BarList title="Rooms by Category" items={roomsByCategory} />
         </div>
         <div className="col-12 col-lg-6">
           <BarList title="Users by City" items={usersByCity} />
@@ -156,6 +223,7 @@ export default function Dashboard() {
         <div className="card-header soft-card-header">
           <h5 className="fw-bold mb-0">Active Rooms</h5>
         </div>
+
         <div className="table-responsive">
           <table className="table table-hover align-middle mb-0 table-soft">
             <thead>
@@ -165,16 +233,23 @@ export default function Dashboard() {
                 <th className="text-end">Price From</th>
               </tr>
             </thead>
+
             <tbody>
-              {activeRoomsList.map((r, index) => (
-                <tr key={index}>
-                  <td>{r.name}</td>
-                  <td className="text-end">{r.rooms}</td>
-                  <td className="text-end fw-semibold">
-                    ₹{r.price.toLocaleString("en-IN")}
+              {activeRoomsList.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="text-center py-4 text-muted">
+                    No active rooms found
                   </td>
                 </tr>
-              ))}
+              ) : (
+                activeRoomsList.map((r, index) => (
+                  <tr key={index}>
+                    <td>{r.name}</td>
+                    <td className="text-end">{r.rooms}</td>
+                    <td className="text-end fw-semibold">₹{r.price.toLocaleString("en-IN")}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

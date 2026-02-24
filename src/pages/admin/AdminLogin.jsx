@@ -23,7 +23,6 @@ export default function AdminLogin() {
     try {
       const data = await adminLogin(form);
 
-      // ✅ Token can come with different names depending on backend
       const token =
         data?.token ||
         data?.jwt ||
@@ -31,22 +30,31 @@ export default function AdminLogin() {
         data?.data?.token ||
         data?.data?.jwt;
 
-      // ✅ Save login state
-      if (token) localStorage.setItem("admin_token", token);
+      if (!token) {
+        throw new Error("Token not received from server.");
+      }
+
+      localStorage.setItem("admin_token", token);
       localStorage.setItem("admin_auth", "true");
-      localStorage.setItem(
-        "admin_email",
-        data?.admin?.email || data?.email || form.email
-      );
+      localStorage.setItem("admin_email", data?.admin?.email || data?.email || form.email);
 
       navigate("/admin/dashboard", { replace: true });
     } catch (err) {
-      console.log("ADMIN LOGIN ERROR:", err?.response?.data || err);
+      // ✅ show exact backend error
+      const status = err?.response?.status;
+      const url = err?.config?.baseURL + (err?.config?.url || "");
+      console.log("ADMIN LOGIN ERROR:", {
+        status,
+        url,
+        data: err?.response?.data,
+        message: err?.message,
+      });
 
       const msg =
         err?.response?.data?.message ||
         err?.response?.data?.error ||
-        err?.message ||
+        err?.response?.data?.msg ||
+        (status ? `Request failed (${status}).` : err?.message) ||
         "Invalid email or password";
 
       setError(msg);

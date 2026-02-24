@@ -11,7 +11,7 @@ export default function AdminLogin() {
   const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => {
-    setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
+    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
     setError("");
   };
 
@@ -23,14 +23,19 @@ export default function AdminLogin() {
     try {
       const data = await adminLogin(form);
 
-      // ✅ store token
+      // ✅ Save token + auth
       localStorage.setItem("admin_token", data.token);
       localStorage.setItem("admin_auth", "true");
-      localStorage.setItem("admin_email", data.admin.email);
+      localStorage.setItem("admin_email", data?.admin?.email || form.email);
 
       navigate("/admin/dashboard");
     } catch (err) {
-      setError(err.message || "Invalid email or password");
+      // Axios error handling
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Invalid email or password";
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -56,6 +61,7 @@ export default function AdminLogin() {
               onChange={handleChange}
               required
               autoComplete="username"
+              disabled={loading}
             />
           </div>
 
@@ -70,10 +76,15 @@ export default function AdminLogin() {
               onChange={handleChange}
               required
               autoComplete="current-password"
+              disabled={loading}
             />
           </div>
 
-          <button type="submit" className="btn btn-primary w-100" disabled={loading}>
+          <button
+            type="submit"
+            className="btn btn-primary w-100"
+            disabled={loading}
+          >
             {loading ? "Logging in..." : "Login"}
           </button>
         </form>

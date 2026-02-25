@@ -12,7 +12,7 @@ const ROOM_TYPES = [
   "Presidential Suite",
 ];
 
-export default function AddRoom() {
+export default function createRoom() {
   const navigate = useNavigate();
   const { id } = useParams();
   const isEdit = Boolean(id);

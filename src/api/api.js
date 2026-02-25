@@ -7,7 +7,7 @@ const BASE = RAW_BASE.replace(/\/+$/, "");
 
 const api = axios.create({
   baseURL: BASE,
-  withCredentials: false, // ✅ JWT flow
+  headers: { "Content-Type": "application/json" },
 });
 
 api.interceptors.request.use((config) => {

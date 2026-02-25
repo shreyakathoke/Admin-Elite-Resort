@@ -1,22 +1,105 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../../styles/rooms.css";
 
-const initialRooms = [
-  { id: 101, type: "Deluxe Room", status: "available" },
-  { id: 102, type: "Sea View Suite", status: "available" },
-  { id: 103, type: "Executive Room", status: "not_available" },
-  { id: 104, type: "Villa Room", status: "available" },
-  { id: 105, type: "Family Suite", status: "not_available" },
-];
+import { deleteAdminRoom, getAdminRooms } from "../../api/adminRoomsApi";
 
 export default function Rooms() {
-  const [rooms, setRooms] = useState(initialRooms);
   const navigate = useNavigate();
 
-  const deleteRoom = (id) => {
-    setRooms((prev) => prev.filter((room) => room.id !== id));
-  };
+  const [rooms, setRooms] = useState([]);
+  const [q, setQ] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [busyDeleteId, setBusyDeleteId] = useState(null);
+  const [error, setError] = useState("");
+
+  // ✅ normalize roomId key (backend may return roomId/_id/id)
+  function getRoomKey(room) {
+    return room.roomId || room._id || room.id;
+  }
+
+  // ✅ normalize fields (backend may return roomNumber/type/available)
+  function mapRoom(room) {
+    return {
+      key: getRoomKey(room),
+      roomNumber: room.roomNumber ?? room.number ?? room.roomNo ?? "",
+      type: room.type ?? room.roomType ?? "",
+      available:
+        typeof room.available === "boolean"
+          ? room.available
+          : room.availability
+          ? String(room.availability).toLowerCase() === "available"
+          : true,
+      raw: room,
+    };
+  }
+
+  async function loadRooms({ silent = false } = {}) {
+    if (!silent) setLoading(true);
+    setError("");
+
+    try {
+      const data = await getAdminRooms();
+
+      // backend may return array OR {rooms:[...]}
+      const list = Array.isArray(data) ? data : data?.rooms || [];
+      setRooms(list.map(mapRoom));
+    } catch (e) {
+      console.error("GET ROOMS ERROR:", e);
+      setError(
+        e?.response?.data?.message ||
+          e?.response?.data?.error ||
+          "Failed to load rooms. Check API route, token, and baseURL."
+      );
+      setRooms([]);
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadRooms();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const filteredRooms = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return rooms;
+
+    return rooms.filter((r) => {
+      const rn = String(r.roomNumber).toLowerCase();
+      const t = String(r.type).toLowerCase();
+      return rn.includes(s) || t.includes(s);
+    });
+  }, [rooms, q]);
+
+  async function onRefresh() {
+    setRefreshing(true);
+    await loadRooms({ silent: true });
+    setRefreshing(false);
+  }
+
+  async function onDelete(roomKey) {
+    const ok = window.confirm("Are you sure you want to delete this room?");
+    if (!ok) return;
+
+    setBusyDeleteId(roomKey);
+    try {
+      await deleteAdminRoom(roomKey);
+      // fast UI update
+      setRooms((prev) => prev.filter((r) => r.key !== roomKey));
+    } catch (e) {
+      console.error("DELETE ROOM ERROR:", e);
+      alert(
+        e?.response?.data?.message ||
+          e?.response?.data?.error ||
+          "Failed to delete room."
+      );
+    } finally {
+      setBusyDeleteId(null);
+    }
+  }
 
   return (
     <div className="container-fluid px-3 px-lg-4 py-4">
@@ -29,13 +112,52 @@ export default function Rooms() {
           </p>
         </div>
 
-        <button
-          className="btn btn-primary rounded-3"
-          onClick={() => navigate("/admin/rooms/add")}
-        >
-          Add Room
-        </button>
+        <div className="d-flex gap-2">
+          <button
+            className="btn btn-outline-secondary rounded-3"
+            onClick={onRefresh}
+            disabled={refreshing}
+          >
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </button>
+
+          <button
+            className="btn btn-primary rounded-3"
+            onClick={() => navigate("/admin/rooms/add")}
+          >
+            Add Room
+          </button>
+        </div>
       </div>
+
+      {/* Search */}
+      <div className="mb-3 d-flex flex-wrap gap-2">
+        <input
+          className="form-control"
+          style={{ maxWidth: 360 }}
+          placeholder="Search by room number or type..."
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        {q && (
+          <button className="btn btn-outline-secondary" onClick={() => setQ("")}>
+            Clear
+          </button>
+        )}
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="alert alert-danger">
+          <div className="fw-semibold">Error</div>
+          <div className="small">{error}</div>
+          <div className="small mt-2">
+            Tip: If you see 404, check if your request URL is
+            <code className="ms-1">/api/admin/rooms</code> vs
+            <code className="ms-1">/admin/rooms</code> (baseURL issue).
+          </div>
+        </div>
+      )}
 
       {/* Table */}
       <div className="card soft-card">
@@ -43,7 +165,7 @@ export default function Rooms() {
           <table className="table align-middle mb-0 rooms-table">
             <thead>
               <tr>
-                <th>Room ID</th>
+                <th>Room No</th>
                 <th>Room Type</th>
                 <th>Status</th>
                 <th className="text-end">Actions</th>
@@ -51,63 +173,68 @@ export default function Rooms() {
             </thead>
 
             <tbody>
-              {rooms.map((room) => (
-                <tr key={room.id}>
-                  <td className="fw-semibold">#{room.id}</td>
-                  <td>{room.type}</td>
-
-                  <td>
-                    <span
-                      className={`badge rounded-pill px-3 py-2 ${
-                        room.status === "available"
-                          ? "bg-success-subtle text-success"
-                          : "bg-danger-subtle text-danger"
-                      }`}
-                    >
-                      {room.status === "available"
-                        ? "Available"
-                        : "Not Available"}
-                    </span>
-                  </td>
-
-                  {/* TEXT BUTTONS */}
-                  <td className="text-end">
-                    <div className="d-flex justify-content-end gap-2 flex-wrap">
-                      <button
-                        className="btn btn-outline-primary btn-sm"
-                        onClick={() =>
-                          navigate(`/admin/rooms/${room.id}`)
-                        }
-                      >
-                        View
-                      </button>
-
-                      <button
-                        className="btn btn-outline-warning btn-sm"
-                        onClick={() =>
-                          navigate(`/admin/rooms/edit/${room.id}`)
-                        }
-                      >
-                        Edit
-                      </button>
-
-                      <button
-                        className="btn btn-outline-danger btn-sm"
-                        onClick={() => deleteRoom(room.id)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-
-              {rooms.length === 0 && (
+              {loading ? (
                 <tr>
-                  <td colSpan={4} className="text-center py-4 text-muted">
-                    No rooms available.
+                  <td colSpan={4} className="text-center py-5">
+                    <div className="spinner-border" role="status" />
+                    <div className="mt-2 text-muted">Loading rooms...</div>
                   </td>
                 </tr>
+              ) : (
+                <>
+                  {filteredRooms.map((room) => (
+                    <tr key={room.key}>
+                      <td className="fw-semibold">#{room.roomNumber || room.key}</td>
+                      <td>{room.type || "—"}</td>
+
+                      <td>
+                        <span
+                          className={`badge rounded-pill px-3 py-2 ${
+                            room.available
+                              ? "bg-success-subtle text-success"
+                              : "bg-danger-subtle text-danger"
+                          }`}
+                        >
+                          {room.available ? "Available" : "Not Available"}
+                        </span>
+                      </td>
+
+                      <td className="text-end">
+                        <div className="d-flex justify-content-end gap-2 flex-wrap">
+                          <button
+                            className="btn btn-outline-primary btn-sm"
+                            onClick={() => navigate(`/admin/rooms/${room.key}`)}
+                          >
+                            View
+                          </button>
+
+                          <button
+                            className="btn btn-outline-warning btn-sm"
+                            onClick={() => navigate(`/admin/rooms/edit/${room.key}`)}
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            className="btn btn-outline-danger btn-sm"
+                            onClick={() => onDelete(room.key)}
+                            disabled={busyDeleteId === room.key}
+                          >
+                            {busyDeleteId === room.key ? "Deleting..." : "Delete"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {!loading && filteredRooms.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="text-center py-4 text-muted">
+                        No rooms available.
+                      </td>
+                    </tr>
+                  )}
+                </>
               )}
             </tbody>
           </table>

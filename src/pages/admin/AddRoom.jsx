@@ -27,13 +27,13 @@ export default function AddRoom() {
     description: "",
   });
 
-  const [imageFile, setImageFile] = useState(null);
+  // Optional preview only (not sent to backend)
   const [previewUrl, setPreviewUrl] = useState("");
   const [touched, setTouched] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [loadingRoom, setLoadingRoom] = useState(false);
 
-  // ✅ Load room in edit mode (REAL API)
+  // ✅ Load room in edit mode
   useEffect(() => {
     if (!isEdit) return;
 
@@ -42,9 +42,6 @@ export default function AddRoom() {
       try {
         const data = await getRoomById(id);
 
-        // IMPORTANT:
-        // Your backend must return these fields (or adjust mapping):
-        // roomNumber, type, pricePerNight, capacity, available, description, imageUrl
         setForm({
           roomNo: data.roomNumber ?? "",
           roomType: data.type ?? "",
@@ -54,6 +51,7 @@ export default function AddRoom() {
           description: data.description ?? "",
         });
 
+        // If backend returns imageUrl you can show it
         if (data.imageUrl) setPreviewUrl(data.imageUrl);
       } catch (err) {
         console.error("GET ROOM ERROR:", err);
@@ -80,13 +78,8 @@ export default function AddRoom() {
     if (form.capacity === "" || Number(form.capacity) <= 0) e.capacity = "Enter a valid capacity.";
     if (!form.availability) e.availability = "Availability is required.";
     if (!form.description.trim()) e.description = "Description is required.";
-
-    // Image required on create; optional on edit if already have imageUrl
-    if (!isEdit && !imageFile) e.image = "Room image is required.";
-    if (isEdit && !imageFile && !previewUrl) e.image = "Room image is required.";
-
     return e;
-  }, [form, imageFile, isEdit, previewUrl]);
+  }, [form]);
 
   const isValid = Object.keys(errors).length === 0;
 
@@ -99,11 +92,10 @@ export default function AddRoom() {
     setTouched((p) => ({ ...p, [e.target.name]: true }));
   }
 
+  // Optional preview only (not saved to DB unless backend supports it)
   function onImageChange(e) {
-    const file = e.target.files?.[0] || null;
-    setImageFile(file);
+    const file = e.target.files?.[0];
     if (!file) return;
-
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
   }
@@ -118,41 +110,41 @@ export default function AddRoom() {
       capacity: true,
       availability: true,
       description: true,
-      image: true,
     });
 
     if (!isValid) return;
 
     setSubmitting(true);
 
-    // ✅ Map your UI fields -> backend API fields
+    // ✅ JSON payload exactly matching your API docs
     const payload = {
       roomNumber: form.roomNo.trim(),
       type: form.roomType,
       pricePerNight: Number(form.price),
       capacity: Number(form.capacity),
       available: form.availability === "available",
+      // your doc doesn't mention description but if backend accepts it, keep it:
       description: form.description.trim(),
-      image: imageFile || undefined, // file
     };
 
     try {
       if (isEdit) {
         await updateRoom(id, payload);
-        alert("Room updated successfully.");
+        alert("Room updated successfully ✅");
       } else {
         await createRoom(payload);
-        alert("Room added successfully.");
+        alert("Room added successfully ✅");
       }
 
+      // ✅ redirect to Rooms page
       navigate("/admin/rooms");
     } catch (err) {
       console.error("SAVE ROOM ERROR:", err);
-      const msg =
+      alert(
         err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        "Failed to save room. Check backend route, token, and request body.";
-      alert(msg);
+          err?.response?.data?.error ||
+          "Failed to save room. Check backend route, token, and request body."
+      );
     } finally {
       setSubmitting(false);
     }
@@ -167,7 +159,7 @@ export default function AddRoom() {
     setSubmitting(true);
     try {
       await deleteRoom(id);
-      alert("Room deleted successfully.");
+      alert("Room deleted successfully ✅");
       navigate("/admin/rooms");
     } catch (err) {
       console.error("DELETE ROOM ERROR:", err);
@@ -314,10 +306,6 @@ export default function AddRoom() {
                         </label>
                       </div>
                     </div>
-
-                    {touched.availability && errors.availability && (
-                      <div className="text-danger small mt-2">{errors.availability}</div>
-                    )}
                   </div>
 
                   {/* Description */}
@@ -337,19 +325,11 @@ export default function AddRoom() {
                     )}
                   </div>
 
-                  {/* Image */}
+                  {/* OPTIONAL Image Preview (not saved in DB) */}
                   <div className="col-12">
-                    <label className="form-label">Room Image *</label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={onImageChange}
-                      className={`form-control ${touched.image && errors.image ? "is-invalid" : ""}`}
-                    />
-                    {touched.image && errors.image && <div className="invalid-feedback d-block">{errors.image}</div>}
-                    <div className="form-text">
-                      {isEdit ? "Upload new image only if you want to replace." : "JPG/PNG recommended."}
-                    </div>
+                    <label className="form-label">Room Image (optional)</label>
+                    <input type="file" accept="image/*" onChange={onImageChange} className="form-control" />
+                    <div className="form-text">This is preview-only unless backend supports image upload.</div>
                   </div>
 
                   {/* Actions */}
@@ -364,12 +344,7 @@ export default function AddRoom() {
                       </button>
                     )}
 
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary"
-                      onClick={() => navigate(-1)}
-                      disabled={submitting}
-                    >
+                    <button type="button" className="btn btn-outline-secondary" onClick={() => navigate(-1)} disabled={submitting}>
                       Cancel
                     </button>
                   </div>
@@ -383,11 +358,13 @@ export default function AddRoom() {
             <div className="card preview-card">
               <div className="card-body p-4 p-md-5">
                 <div className="preview-title mb-3">Preview</div>
-
                 <div className="preview-img">
-                  {previewUrl ? <img src={previewUrl} alt="Preview" /> : <div className="preview-placeholder">Upload image to preview</div>}
+                  {previewUrl ? (
+                    <img src={previewUrl} alt="Preview" />
+                  ) : (
+                    <div className="preview-placeholder">Upload image to preview</div>
+                  )}
                 </div>
-
                 <div className="mt-3">
                   <div className="preview-name">
                     {form.roomType || "Room Type"}
@@ -395,21 +372,16 @@ export default function AddRoom() {
                       {form.availability === "available" ? "Available" : "Unavailable"}
                     </span>
                   </div>
-
                   <div className="preview-meta mt-2">
                     <div><span>Room No:</span> {form.roomNo || "—"}</div>
                     <div><span>Price:</span> {form.price ? `₹${form.price}/night` : "—"}</div>
                     <div><span>Capacity:</span> {form.capacity ? `${form.capacity} guests` : "—"}</div>
                   </div>
-
                   <p className="preview-desc mt-3">{form.description || "Room description will appear here..."}</p>
                 </div>
               </div>
             </div>
-
-            <div className="small text-muted mt-3">
-              Tip: Keep the description short and attractive (2–4 lines).
-            </div>
+            <div className="small text-muted mt-3">Tip: Keep the description short and attractive (2–4 lines).</div>
           </div>
         </div>
       </div>

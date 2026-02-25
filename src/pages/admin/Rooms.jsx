@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../../styles/rooms.css";
 
-import { deleteAdminRoom, getAdminRooms } from "../../api/adminRoomsApi";
+import { deleteAdminRoom, getAdminRooms } from "../../api/roomsApi";
 
 export default function Rooms() {
   const navigate = useNavigate();

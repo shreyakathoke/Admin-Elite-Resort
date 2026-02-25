@@ -1,36 +1,55 @@
 import api from "./api";
 
-// 8.1 Add Room
-export async function adminAddRoom(payload) {
-  // payload = { roomNumber, type, pricePerNight, capacity, available }
+/**
+ * Admin Rooms API
+ * Backend routes:
+ * POST   /api/admin/rooms
+ * GET    /api/admin/rooms
+ * GET    /api/admin/rooms/:id
+ * PUT    /api/admin/rooms/:id
+ * DELETE /api/admin/rooms/:id
+ */
+
+// ✅ Create Room
+export async function createRoom(payload) {
   const res = await api.post("/api/admin/rooms", payload, {
     headers: { "Content-Type": "application/json" },
   });
   return res.data;
 }
 
-// 8.2 Update Room
-export async function adminUpdateRoom(roomId, payload) {
+// ✅ Update Room
+export async function updateRoom(roomId, payload) {
   const res = await api.put(`/api/admin/rooms/${roomId}`, payload, {
     headers: { "Content-Type": "application/json" },
   });
   return res.data;
 }
 
-// 8.3 Delete Room
-export async function adminDeleteRoom(roomId) {
+// ✅ Delete Room
+export async function deleteRoom(roomId) {
   const res = await api.delete(`/api/admin/rooms/${roomId}`);
   return res.data;
 }
 
-// 8.4 Get All Rooms (Admin)
+// ✅ Get All Rooms
 export async function adminGetAllRooms() {
   const res = await api.get("/api/admin/rooms");
   return res.data;
 }
 
-// 8.5 Get Room by ID (Admin)
-export async function adminGetRoomById(roomId) {
+// ✅ Get Room by ID
+export async function getRoomById(roomId) {
   const res = await api.get(`/api/admin/rooms/${roomId}`);
   return res.data;
 }
+
+/**
+ * ✅ Optional: Keep your previous admin* exports also (safe)
+ * If somewhere else you already used adminAddRoom/adminUpdateRoom etc.
+ */
+
+export const adminAddRoom = createRoom;
+export const adminUpdateRoom = updateRoom;
+export const adminDeleteRoom = deleteRoom;
+export const adminGetRoomById = getRoomById;

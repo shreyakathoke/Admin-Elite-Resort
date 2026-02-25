@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { adminDeleteRoom, adminGetAllRooms } from "../../api/roomsApi";
+import { deleteAdminRoom, getAdminRooms } from "../../api/roomsApi";
 import "../../styles/rooms.css";
 
 export default function Rooms() {
@@ -13,21 +13,21 @@ export default function Rooms() {
   const [busyDeleteId, setBusyDeleteId] = useState(null);
   const [error, setError] = useState("");
 
-  // ✅ normalize roomId key (backend may return roomId/_id/id)
+  // ✅ normalize room id (backend may return roomId/_id/id)
   function getRoomKey(room) {
-    return room.roomId || room._id || room.id;
+    return room?.roomId || room?._id || room?.id;
   }
 
-  // ✅ normalize fields (backend may return roomNumber/type/available)
+  // ✅ normalize room fields
   function mapRoom(room) {
     return {
       key: getRoomKey(room),
-      roomNumber: room.roomNumber ?? room.number ?? room.roomNo ?? "",
-      type: room.type ?? room.roomType ?? "",
+      roomNumber: room?.roomNumber ?? room?.number ?? room?.roomNo ?? "",
+      type: room?.type ?? room?.roomType ?? "",
       available:
-        typeof room.available === "boolean"
+        typeof room?.available === "boolean"
           ? room.available
-          : room.availability
+          : room?.availability
           ? String(room.availability).toLowerCase() === "available"
           : true,
       raw: room,
@@ -39,9 +39,7 @@ export default function Rooms() {
     setError("");
 
     try {
-      const data = await adminGetAllRooms();
-
-      // backend may return array OR {rooms:[...]}
+      const data = await getAdminRooms();
       const list = Array.isArray(data) ? data : data?.rooms || [];
       setRooms(list.map(mapRoom));
     } catch (e) {
@@ -49,7 +47,7 @@ export default function Rooms() {
       setError(
         e?.response?.data?.message ||
           e?.response?.data?.error ||
-          "Failed to load rooms. Check API route, token, and baseURL."
+          "Failed to load rooms. Check API route /api/admin/rooms and token."
       );
       setRooms([]);
     } finally {
@@ -85,9 +83,8 @@ export default function Rooms() {
 
     setBusyDeleteId(roomKey);
     try {
-      await adminDeleteRoom(roomKey);
-      // fast UI update
-      setRooms((prev) => prev.filter((r) => r.key !== roomKey));
+      await deleteAdminRoom(roomKey); // ✅ FIXED
+      setRooms((prev) => prev.filter((r) => r.key !== roomKey)); // ✅ instant UI update
     } catch (e) {
       console.error("DELETE ROOM ERROR:", e);
       alert(
@@ -148,19 +145,14 @@ export default function Rooms() {
       {/* Error */}
       {error && (
         <div className="alert alert-danger">
-          <div className="fw-semibold">Error</div>
-          <div className="small">{error}</div>
-          <div className="small mt-2">
-            Tip: If you see 404, verify your backend route is exactly
-            <code className="ms-1">/api/admin/rooms</code>.
-          </div>
+          <strong>Error:</strong> {error}
         </div>
       )}
 
       {/* Table */}
-      <div className="card soft-card">
+      <div className="card">
         <div className="table-responsive">
-          <table className="table align-middle mb-0 rooms-table">
+          <table className="table align-middle mb-0">
             <thead>
               <tr>
                 <th>Room No</th>
@@ -178,67 +170,51 @@ export default function Rooms() {
                     <div className="mt-2 text-muted">Loading rooms...</div>
                   </td>
                 </tr>
+              ) : filteredRooms.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-4 text-muted">
+                    No rooms available.
+                  </td>
+                </tr>
               ) : (
-                <>
-                  {filteredRooms.map((room) => (
-                    <tr key={room.key}>
-                      <td className="fw-semibold">
-                        #{room.roomNumber || room.key}
-                      </td>
-                      <td>{room.type || "—"}</td>
+                filteredRooms.map((room) => (
+                  <tr key={room.key}>
+                    <td className="fw-semibold">#{room.roomNumber || room.key}</td>
+                    <td>{room.type || "—"}</td>
 
-                      <td>
-                        <span
-                          className={`badge rounded-pill px-3 py-2 ${
-                            room.available
-                              ? "bg-success-subtle text-success"
-                              : "bg-danger-subtle text-danger"
-                          }`}
+                    <td>
+                      <span className={`badge ${room.available ? "bg-success" : "bg-danger"}`}>
+                        {room.available ? "Available" : "Not Available"}
+                      </span>
+                    </td>
+
+                    <td className="text-end">
+                      <div className="d-flex justify-content-end gap-2 flex-wrap">
+                        <button
+                          className="btn btn-outline-primary btn-sm"
+                          onClick={() => navigate(`/admin/rooms/${room.key}`)}
                         >
-                          {room.available ? "Available" : "Not Available"}
-                        </span>
-                      </td>
+                          View
+                        </button>
 
-                      <td className="text-end">
-                        <div className="d-flex justify-content-end gap-2 flex-wrap">
-                          <button
-                            className="btn btn-outline-primary btn-sm"
-                            onClick={() => navigate(`/admin/rooms/${room.key}`)}
-                          >
-                            View
-                          </button>
+                        <button
+                          className="btn btn-outline-warning btn-sm"
+                          onClick={() => navigate(`/admin/rooms/edit/${room.key}`)}
+                        >
+                          Edit
+                        </button>
 
-                          <button
-                            className="btn btn-outline-warning btn-sm"
-                            onClick={() =>
-                              navigate(`/admin/rooms/edit/${room.key}`)
-                            }
-                          >
-                            Edit
-                          </button>
-
-                          <button
-                            className="btn btn-outline-danger btn-sm"
-                            onClick={() => onDelete(room.key)}
-                            disabled={busyDeleteId === room.key}
-                          >
-                            {busyDeleteId === room.key
-                              ? "Deleting..."
-                              : "Delete"}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-
-                  {!loading && filteredRooms.length === 0 && (
-                    <tr>
-                      <td colSpan={4} className="text-center py-4 text-muted">
-                        No rooms available.
-                      </td>
-                    </tr>
-                  )}
-                </>
+                        <button
+                          className="btn btn-outline-danger btn-sm"
+                          onClick={() => onDelete(room.key)}
+                          disabled={busyDeleteId === room.key}
+                        >
+                          {busyDeleteId === room.key ? "Deleting..." : "Delete"}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>

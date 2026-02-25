@@ -44,12 +44,16 @@ export async function getRoomById(roomId) {
   return res.data;
 }
 
-/**
- * ✅ Optional: Keep your previous admin* exports also (safe)
- * If somewhere else you already used adminAddRoom/adminUpdateRoom etc.
- */
+/* -------------------------------------------------------
+ ✅ Aliases (so any component name will work)
+-------------------------------------------------------- */
 
+// previous admin* style
 export const adminAddRoom = createRoom;
 export const adminUpdateRoom = updateRoom;
 export const adminDeleteRoom = deleteRoom;
 export const adminGetRoomById = getRoomById;
+
+// ✅ Names used in your Rooms.jsx
+export const getAdminRooms = adminGetAllRooms;
+export const deleteAdminRoom = deleteRoom;

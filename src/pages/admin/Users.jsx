@@ -1,61 +1,93 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../../styles/users.css";
-
-const initialUsers = [
-  {
-    id: 1,
-    name: "Aryan Doe",
-    email: "aryan123@gmail.com",
-    phone: "7894563218",
-    idProofType: "Aadhar",
-    idProofNumber: "1234 5678 9012",
-    created: "Feb 9, 2026",
-    status: "active",
-  },
-  {
-    id: 2,
-    name: "hdt",
-    email: "himanshuthakre7509@gmail.com",
-    phone: "9876543210",
-    idProofType: "PAN",
-    idProofNumber: "ABCDE1234F",
-    created: "Feb 9, 2026",
-    status: "active",
-  },
-  {
-    id: 3,
-    name: "Test User",
-    email: "test@example.com",
-    phone: "1234567890",
-    idProofType: "Driving License",
-    idProofNumber: "MH12-20234567",
-    created: "Feb 3, 2026",
-    status: "inactive",
-  },
-];
+import { deleteUserApi, fetchUsers } from "../../api/usersApi";
 
 export default function Users() {
-  const [users, setUsers] = useState(initialUsers);
-  const [search, setSearch] = useState("");
   const navigate = useNavigate();
 
+  const [users, setUsers] = useState([]);
+  const [search, setSearch] = useState("");
+
+  const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState(null);
+  const [error, setError] = useState("");
+
+  // ✅ Load users from backend
+  useEffect(() => {
+    let ignore = false;
+
+    async function load() {
+      try {
+        setLoading(true);
+        setError("");
+
+        const data = await fetchUsers({ search: "" });
+
+        // supports both API shapes:
+        const list = Array.isArray(data) ? data : data.users;
+
+        if (!ignore) setUsers(list || []);
+      } catch (e) {
+        if (!ignore) {
+          setError(
+            e?.response?.data?.message ||
+              e?.message ||
+              "Failed to load users."
+          );
+        }
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  // ✅ Client-side filter (works even if backend doesn’t implement search)
   const filteredUsers = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return users;
 
-    return users.filter(
-      (u) =>
-        u.name.toLowerCase().includes(q) ||
-        u.email.toLowerCase().includes(q) ||
-        u.phone.toLowerCase().includes(q) ||
-        u.idProofType.toLowerCase().includes(q) ||
-        u.idProofNumber.toLowerCase().includes(q)
-    );
+    return users.filter((u) => {
+      const name = (u.name || "").toLowerCase();
+      const email = (u.email || "").toLowerCase();
+      const phone = (u.phone || "").toLowerCase();
+      const idProofType = (u.idProofType || u.id_proof_type || "").toLowerCase();
+      const idProofNumber = (u.idProofNumber || u.id_proof_number || "").toLowerCase();
+      return (
+        name.includes(q) ||
+        email.includes(q) ||
+        phone.includes(q) ||
+        idProofType.includes(q) ||
+        idProofNumber.includes(q)
+      );
+    });
   }, [users, search]);
 
-  const deleteUser = (id) => {
-    setUsers((prev) => prev.filter((u) => u.id !== id));
+  // ✅ Delete user (API)
+  const handleDelete = async (id) => {
+    const ok = window.confirm("Are you sure you want to delete this user?");
+    if (!ok) return;
+
+    try {
+      setDeletingId(id);
+      await deleteUserApi(id);
+
+      // remove from UI
+      setUsers((prev) => prev.filter((u) => (u.id || u._id) !== id));
+    } catch (e) {
+      alert(
+        e?.response?.data?.message ||
+          e?.message ||
+          "Failed to delete user."
+      );
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   return (
@@ -78,102 +110,138 @@ export default function Users() {
         />
       </div>
 
-      {/* Table */}
-      <div className="card soft-card">
-        <div className="table-responsive">
-          <table className="table align-middle mb-0 users-table">
-            <thead>
-              <tr>
-                <th><i className="bi bi-person me-2" />Name</th>
-                <th><i className="bi bi-envelope me-2" />Email</th>
-                <th><i className="bi bi-telephone me-2" />Phone</th>
-                <th><i className="bi bi-card-text me-2" />ID Proof</th>
-                <th><i className="bi bi-calendar me-2" />Created</th>
-                <th>Status</th>
-                <th className="text-end">Actions</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {filteredUsers.map((user) => (
-                <tr key={user.id}>
-                  {/* Name */}
-                  <td>
-                    <div className="d-flex align-items-center gap-3">
-                      <div className="user-avatar">
-                        <i className="bi bi-person" />
-                      </div>
-                      <div className="fw-semibold">{user.name}</div>
-                    </div>
-                  </td>
-
-                  {/* Email */}
-                  <td className="text-muted">{user.email}</td>
-
-                  {/* Phone */}
-                  <td className="text-muted">{user.phone}</td>
-
-                  {/* ID Proof */}
-                  <td>
-                    <div className="fw-semibold">{user.idProofType}</div>
-                    <div className="text-muted small">
-                      {user.idProofNumber}
-                    </div>
-                  </td>
-
-                  {/* Created */}
-                  <td className="text-muted">{user.created}</td>
-
-                  {/* Status */}
-                  <td>
-                    <span
-                      className={`badge rounded-pill px-3 py-2 ${
-                        user.status === "active"
-                          ? "bg-success-subtle text-success"
-                          : "bg-danger-subtle text-danger"
-                      }`}
-                    >
-                      <i className="bi bi-circle-fill me-2 small" />
-                      {user.status === "active"
-                        ? "Active"
-                        : "Inactive"}
-                    </span>
-                  </td>
-
-                  {/* Actions */}
-                  <td className="text-end">
-                    <button
-                      className="btn btn-light btn-sm me-2 btn-action-view"
-                      onClick={() =>
-                        navigate(`/admin/users/${user.id}`)
-                      }
-                    >
-                      <i className="bi bi-eye me-1" />
-                      View
-                    </button>
-
-                    <button
-                      className="btn btn-light btn-sm btn-action-delete"
-                      onClick={() => deleteUser(user.id)}
-                    >
-                      <i className="bi bi-trash me-1 text-danger" />
-                      <span className="text-danger">Delete</span>
-                    </button>
-                  </td>
-                </tr>
-              ))}
-
-              {filteredUsers.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="text-center py-4 text-muted">
-                    No users found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {/* States */}
+      {loading && (
+        <div className="card soft-card p-4">
+          <div className="text-muted">Loading users...</div>
         </div>
-      </div>
+      )}
+
+      {!loading && error && (
+        <div className="alert alert-danger">
+          <b>Error:</b> {error}
+        </div>
+      )}
+
+      {!loading && !error && (
+        <div className="card soft-card">
+          <div className="table-responsive">
+            <table className="table align-middle mb-0 users-table">
+              <thead>
+                <tr>
+                  <th>
+                    <i className="bi bi-person me-2" />
+                    Name
+                  </th>
+                  <th>
+                    <i className="bi bi-envelope me-2" />
+                    Email
+                  </th>
+                  <th>
+                    <i className="bi bi-telephone me-2" />
+                    Phone
+                  </th>
+                  <th>
+                    <i className="bi bi-card-text me-2" />
+                    ID Proof
+                  </th>
+                  <th>
+                    <i className="bi bi-calendar me-2" />
+                    Created
+                  </th>
+                  <th>Status</th>
+                  <th className="text-end">Actions</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {filteredUsers.map((user) => {
+                  const id = user.id || user._id; // ✅ supports SQL id or Mongo _id
+                  const created =
+                    user.created ||
+                    user.createdAt ||
+                    user.created_at ||
+                    "";
+
+                  const idProofType =
+                    user.idProofType || user.id_proof_type || "-";
+                  const idProofNumber =
+                    user.idProofNumber || user.id_proof_number || "-";
+
+                  const status = (user.status || "active").toLowerCase();
+
+                  return (
+                    <tr key={id}>
+                      <td>
+                        <div className="d-flex align-items-center gap-3">
+                          <div className="user-avatar">
+                            <i className="bi bi-person" />
+                          </div>
+                          <div className="fw-semibold">{user.name}</div>
+                        </div>
+                      </td>
+
+                      <td className="text-muted">{user.email}</td>
+                      <td className="text-muted">{user.phone}</td>
+
+                      <td>
+                        <div className="fw-semibold">{idProofType}</div>
+                        <div className="text-muted small">{idProofNumber}</div>
+                      </td>
+
+                      <td className="text-muted">
+                        {created ? new Date(created).toLocaleDateString() : "-"}
+                      </td>
+
+                      <td>
+                        <span
+                          className={`badge rounded-pill px-3 py-2 ${
+                            status === "active"
+                              ? "bg-success-subtle text-success"
+                              : "bg-danger-subtle text-danger"
+                          }`}
+                        >
+                          <i className="bi bi-circle-fill me-2 small" />
+                          {status === "active" ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+
+                      <td className="text-end">
+                        <button
+                          className="btn btn-light btn-sm me-2 btn-action-view"
+                          onClick={() => navigate(`/admin/users/${id}`)}
+                        >
+                          <i className="bi bi-eye me-1" />
+                          View
+                        </button>
+
+                        <button
+                          className="btn btn-light btn-sm btn-action-delete"
+                          onClick={() => handleDelete(id)}
+                          disabled={deletingId === id}
+                        >
+                          <i className="bi bi-trash me-1 text-danger" />
+                          <span className="text-danger">
+                            {deletingId === id ? "Deleting..." : "Delete"}
+                          </span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {filteredUsers.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="text-center py-4 text-muted">
+                      No users found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
-}   
+}

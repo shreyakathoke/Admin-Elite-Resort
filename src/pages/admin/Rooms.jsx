@@ -86,6 +86,7 @@ export default function Rooms() {
     setBusyDeleteId(roomKey);
     try {
       await adminDeleteRoom(roomKey);
+      // fast UI update
       setRooms((prev) => prev.filter((r) => r.key !== roomKey));
     } catch (e) {
       console.error("DELETE ROOM ERROR:", e);

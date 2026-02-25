@@ -150,10 +150,10 @@ export default function AddRoom() {
     try {
       if (isEdit) {
         await updateRoom(id, payloadA);
-        alert("Room updated successfully ✅");
+        alert("Room updated successfully ");
       } else {
         await createRoom(payloadA);
-        alert("Room added successfully ✅");
+        alert("Room added successfully ");
       }
 
       navigate("/admin/rooms");
@@ -187,7 +187,7 @@ export default function AddRoom() {
     setSubmitting(true);
     try {
       await deleteRoom(id);
-      alert("Room deleted successfully ✅");
+      alert("Room deleted successfully ");
       navigate("/admin/rooms");
     } catch (err) {
       console.error("DELETE ROOM ERROR:", err?.response?.data || err);

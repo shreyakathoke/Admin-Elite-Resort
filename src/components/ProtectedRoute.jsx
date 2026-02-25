@@ -1,39 +1,44 @@
-import { Navigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { Navigate, useLocation } from "react-router-dom";
+
+function decodeJwtPayload(token) {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+
+    // base64url → base64
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const json = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
+    );
+
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
 
 export default function ProtectedRoute({ children }) {
-  const [loading, setLoading] = useState(true);
-  const [isValid, setIsValid] = useState(false);
+  const location = useLocation();
 
-  useEffect(() => {
-    const token = localStorage.getItem("admin_token");
+  const token = localStorage.getItem("admin_token");
 
-    if (!token) {
-      setIsValid(false);
-      setLoading(false);
-      return;
-    }
+  // ✅ If no token, block
+  if (!token) {
+    return <Navigate to="/admin/login" replace state={{ from: location }} />;
+  }
 
-    try {
-      // Decode JWT (basic validation)
-      const payload = JSON.parse(atob(token.split(".")[1]));
+  // ✅ If token is JWT, validate exp (optional)
+  const payload = decodeJwtPayload(token);
+  if (payload?.exp && payload.exp * 1000 < Date.now()) {
+    localStorage.removeItem("admin_token");
+    localStorage.removeItem("admin_auth");
+    localStorage.removeItem("admin_email");
+    return <Navigate to="/admin/login" replace state={{ from: location }} />;
+  }
 
-      // Check expiration
-      if (payload.exp * 1000 < Date.now()) {
-        localStorage.removeItem("admin_token");
-        setIsValid(false);
-      } else {
-        setIsValid(true);
-      }
-    } catch (err) {
-      localStorage.removeItem("admin_token");
-      setIsValid(false);
-    }
-
-    setLoading(false);
-  }, []);
-
-  if (loading) return null;
-
-  return isValid ? children : <Navigate to="/admin/login" replace />;
+  // ✅ If token is not JWT (or no exp), still allow (backend will enforce)
+  return children;
 }

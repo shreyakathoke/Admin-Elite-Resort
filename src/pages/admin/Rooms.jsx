@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { deleteAdminRoom, getAdminRooms } from "../../api/roomsApi";
+import { getAdminRooms, deleteAdminRoom } from "../../api/roomsApi";
 import "../../styles/rooms.css";
 
 export default function Rooms() {

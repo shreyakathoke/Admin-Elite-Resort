@@ -1,13 +1,12 @@
 import api from "./api";
 
 /**
- * Admin Rooms API
- * Backend routes:
+ * Admin Rooms API (based on your Spring controller)
  * POST   /api/admin/rooms
- * GET    /api/admin/rooms
- * GET    /api/admin/rooms/:id
- * PUT    /api/admin/rooms/:id
- * DELETE /api/admin/rooms/:id
+ * PUT    /api/admin/rooms/{id}
+ * DELETE /api/admin/rooms/{id}
+ * GET    /api/admin/rooms/getallRooms   ✅ (your controller)
+ * GET    /api/admin/rooms/{id}
  */
 
 // ✅ Create Room
@@ -32,9 +31,9 @@ export async function deleteRoom(roomId) {
   return res.data;
 }
 
-// ✅ Get All Rooms
-export async function adminGetAllRooms() {
-  const res = await api.get("/api/admin/rooms");
+// ✅ Get All Rooms (Spring controller uses /getallRooms)
+export async function getAdminRooms() {
+  const res = await api.get("/api/admin/rooms/getallRooms");
   return res.data;
 }
 
@@ -48,12 +47,13 @@ export async function getRoomById(roomId) {
  ✅ Aliases (so any component name will work)
 -------------------------------------------------------- */
 
-// previous admin* style
 export const adminAddRoom = createRoom;
 export const adminUpdateRoom = updateRoom;
 export const adminDeleteRoom = deleteRoom;
 export const adminGetRoomById = getRoomById;
 
-// ✅ Names used in your Rooms.jsx
-export const getAdminRooms = adminGetAllRooms;
+// Many files use this name
+export const adminGetAllRooms = getAdminRooms;
+
+// For your Rooms.jsx imports
 export const deleteAdminRoom = deleteRoom;

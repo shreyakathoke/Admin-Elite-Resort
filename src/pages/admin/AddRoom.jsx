@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import "../../styles/addRoom.css";
 
+import { createRoom, deleteRoom, getRoomById, updateRoom } from "../../api/roomsApi";
+
 const ROOM_TYPES = [
   "Deluxe Room",
   "Single Room",
@@ -21,7 +23,7 @@ export default function AddRoom() {
     roomType: "",
     price: "",
     capacity: "",
-    availability: "available", // ✅ available | unavailable
+    availability: "available",
     description: "",
   });
 
@@ -31,46 +33,42 @@ export default function AddRoom() {
   const [submitting, setSubmitting] = useState(false);
   const [loadingRoom, setLoadingRoom] = useState(false);
 
-  // ✅ Load room in edit mode (demo)
+  // ✅ Load room in edit mode (REAL API)
   useEffect(() => {
     if (!isEdit) return;
 
     (async () => {
       setLoadingRoom(true);
       try {
-        // DEMO DATA (replace with API)
-        const data = {
-          roomNo: "101",
-          roomType: "Deluxe Room",
-          price: "4500",
-          capacity: "2",
-          availability: "available", 
-          description: "Luxury deluxe room with balcony and premium interior.",
-          imageUrl: "", 
-        };
+        const data = await getRoomById(id);
 
+        // IMPORTANT:
+        // Your backend must return these fields (or adjust mapping):
+        // roomNumber, type, pricePerNight, capacity, available, description, imageUrl
         setForm({
-          roomNo: data.roomNo || "",
-          roomType: data.roomType || "",
-          price: data.price || "",
-          capacity: data.capacity || "",
-          availability: data.availability || "available",
-          description: data.description || "",
+          roomNo: data.roomNumber ?? "",
+          roomType: data.type ?? "",
+          price: data.pricePerNight ?? "",
+          capacity: data.capacity ?? "",
+          availability: data.available ? "available" : "unavailable",
+          description: data.description ?? "",
         });
 
         if (data.imageUrl) setPreviewUrl(data.imageUrl);
+      } catch (err) {
+        console.error("GET ROOM ERROR:", err);
+        alert("Failed to load room. Check API route / token.");
+        navigate("/admin/rooms");
       } finally {
         setLoadingRoom(false);
       }
     })();
-  }, [isEdit, id]);
+  }, [isEdit, id, navigate]);
 
-  
+  // cleanup blob preview
   useEffect(() => {
     return () => {
-      if (previewUrl && previewUrl.startsWith("blob:")) {
-        URL.revokeObjectURL(previewUrl);
-      }
+      if (previewUrl && previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
     };
   }, [previewUrl]);
 
@@ -83,6 +81,7 @@ export default function AddRoom() {
     if (!form.availability) e.availability = "Availability is required.";
     if (!form.description.trim()) e.description = "Description is required.";
 
+    // Image required on create; optional on edit if already have imageUrl
     if (!isEdit && !imageFile) e.image = "Room image is required.";
     if (isEdit && !imageFile && !previewUrl) e.image = "Room image is required.";
 
@@ -103,7 +102,6 @@ export default function AddRoom() {
   function onImageChange(e) {
     const file = e.target.files?.[0] || null;
     setImageFile(file);
-
     if (!file) return;
 
     const url = URL.createObjectURL(file);
@@ -126,25 +124,35 @@ export default function AddRoom() {
     if (!isValid) return;
 
     setSubmitting(true);
+
+    // ✅ Map your UI fields -> backend API fields
+    const payload = {
+      roomNumber: form.roomNo.trim(),
+      type: form.roomType,
+      pricePerNight: Number(form.price),
+      capacity: Number(form.capacity),
+      available: form.availability === "available",
+      description: form.description.trim(),
+      image: imageFile || undefined, // file
+    };
+
     try {
-      const fd = new FormData();
-      fd.append("roomNo", form.roomNo);
-      fd.append("roomType", form.roomType);
-      fd.append("price", form.price);
-      fd.append("capacity", form.capacity);
-      fd.append("availability", form.availability);
-      fd.append("description", form.description);
-
-      if (imageFile) fd.append("image", imageFile);
-
       if (isEdit) {
-        alert("Room updated (demo). Connect backend to update.");
+        await updateRoom(id, payload);
+        alert("Room updated successfully.");
       } else {
-        alert("Room added (demo). Connect backend to save.");
+        await createRoom(payload);
+        alert("Room added successfully.");
       }
 
-      // ✅ Correct route for your admin panel
       navigate("/admin/rooms");
+    } catch (err) {
+      console.error("SAVE ROOM ERROR:", err);
+      const msg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        "Failed to save room. Check backend route, token, and request body.";
+      alert(msg);
     } finally {
       setSubmitting(false);
     }
@@ -152,13 +160,18 @@ export default function AddRoom() {
 
   async function onDelete() {
     if (!isEdit) return;
+
     const ok = window.confirm("Are you sure you want to delete this room?");
     if (!ok) return;
 
     setSubmitting(true);
     try {
-      alert("Room deleted (demo). Connect backend to delete.");
+      await deleteRoom(id);
+      alert("Room deleted successfully.");
       navigate("/admin/rooms");
+    } catch (err) {
+      console.error("DELETE ROOM ERROR:", err);
+      alert("Failed to delete room.");
     } finally {
       setSubmitting(false);
     }
@@ -209,9 +222,7 @@ export default function AddRoom() {
                       className={`form-control ${touched.roomNo && errors.roomNo ? "is-invalid" : ""}`}
                       placeholder="e.g. 101"
                     />
-                    {touched.roomNo && errors.roomNo && (
-                      <div className="invalid-feedback">{errors.roomNo}</div>
-                    )}
+                    {touched.roomNo && errors.roomNo && <div className="invalid-feedback">{errors.roomNo}</div>}
                   </div>
 
                   {/* Room Type */}
@@ -231,9 +242,7 @@ export default function AddRoom() {
                         </option>
                       ))}
                     </select>
-                    {touched.roomType && errors.roomType && (
-                      <div className="invalid-feedback">{errors.roomType}</div>
-                    )}
+                    {touched.roomType && errors.roomType && <div className="invalid-feedback">{errors.roomType}</div>}
                   </div>
 
                   {/* Price */}
@@ -251,9 +260,7 @@ export default function AddRoom() {
                         placeholder="e.g. 4500"
                         min="1"
                       />
-                      {touched.price && errors.price && (
-                        <div className="invalid-feedback">{errors.price}</div>
-                      )}
+                      {touched.price && errors.price && <div className="invalid-feedback">{errors.price}</div>}
                     </div>
                   </div>
 
@@ -270,9 +277,7 @@ export default function AddRoom() {
                       placeholder="e.g. 2"
                       min="1"
                     />
-                    {touched.capacity && errors.capacity && (
-                      <div className="invalid-feedback">{errors.capacity}</div>
-                    )}
+                    {touched.capacity && errors.capacity && <div className="invalid-feedback">{errors.capacity}</div>}
                   </div>
 
                   {/* Availability */}
@@ -341,9 +346,7 @@ export default function AddRoom() {
                       onChange={onImageChange}
                       className={`form-control ${touched.image && errors.image ? "is-invalid" : ""}`}
                     />
-                    {touched.image && errors.image && (
-                      <div className="invalid-feedback d-block">{errors.image}</div>
-                    )}
+                    {touched.image && errors.image && <div className="invalid-feedback d-block">{errors.image}</div>}
                     <div className="form-text">
                       {isEdit ? "Upload new image only if you want to replace." : "JPG/PNG recommended."}
                     </div>
@@ -382,40 +385,24 @@ export default function AddRoom() {
                 <div className="preview-title mb-3">Preview</div>
 
                 <div className="preview-img">
-                  {previewUrl ? (
-                    <img src={previewUrl} alt="Preview" />
-                  ) : (
-                    <div className="preview-placeholder">Upload image to preview</div>
-                  )}
+                  {previewUrl ? <img src={previewUrl} alt="Preview" /> : <div className="preview-placeholder">Upload image to preview</div>}
                 </div>
 
                 <div className="mt-3">
                   <div className="preview-name">
                     {form.roomType || "Room Type"}
-                    <span
-                      className={`badge ms-2 ${
-                        form.availability === "available" ? "bg-success" : "bg-secondary"
-                      }`}
-                    >
+                    <span className={`badge ms-2 ${form.availability === "available" ? "bg-success" : "bg-secondary"}`}>
                       {form.availability === "available" ? "Available" : "Unavailable"}
                     </span>
                   </div>
 
                   <div className="preview-meta mt-2">
-                    <div>
-                      <span>Room No:</span> {form.roomNo || "—"}
-                    </div>
-                    <div>
-                      <span>Price:</span> {form.price ? `₹${form.price}/night` : "—"}
-                    </div>
-                    <div>
-                      <span>Capacity:</span> {form.capacity ? `${form.capacity} guests` : "—"}
-                    </div>
+                    <div><span>Room No:</span> {form.roomNo || "—"}</div>
+                    <div><span>Price:</span> {form.price ? `₹${form.price}/night` : "—"}</div>
+                    <div><span>Capacity:</span> {form.capacity ? `${form.capacity} guests` : "—"}</div>
                   </div>
 
-                  <p className="preview-desc mt-3">
-                    {form.description || "Room description will appear here..."}
-                  </p>
+                  <p className="preview-desc mt-3">{form.description || "Room description will appear here..."}</p>
                 </div>
               </div>
             </div>

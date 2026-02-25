@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { adminDeleteRoom, adminGetAllRooms } from "../../api/roomsApi";
 import "../../styles/rooms.css";
-
-import { deleteAdminRoom, getAdminRooms } from "../../api/roomsApi";
 
 export default function Rooms() {
   const navigate = useNavigate();
@@ -40,7 +39,7 @@ export default function Rooms() {
     setError("");
 
     try {
-      const data = await getAdminRooms();
+      const data = await adminGetAllRooms();
 
       // backend may return array OR {rooms:[...]}
       const list = Array.isArray(data) ? data : data?.rooms || [];
@@ -86,8 +85,7 @@ export default function Rooms() {
 
     setBusyDeleteId(roomKey);
     try {
-      await deleteAdminRoom(roomKey);
-      // fast UI update
+      await adminDeleteRoom(roomKey);
       setRooms((prev) => prev.filter((r) => r.key !== roomKey));
     } catch (e) {
       console.error("DELETE ROOM ERROR:", e);
@@ -152,9 +150,8 @@ export default function Rooms() {
           <div className="fw-semibold">Error</div>
           <div className="small">{error}</div>
           <div className="small mt-2">
-            Tip: If you see 404, check if your request URL is
-            <code className="ms-1">/api/admin/rooms</code> vs
-            <code className="ms-1">/admin/rooms</code> (baseURL issue).
+            Tip: If you see 404, verify your backend route is exactly
+            <code className="ms-1">/api/admin/rooms</code>.
           </div>
         </div>
       )}
@@ -184,7 +181,9 @@ export default function Rooms() {
                 <>
                   {filteredRooms.map((room) => (
                     <tr key={room.key}>
-                      <td className="fw-semibold">#{room.roomNumber || room.key}</td>
+                      <td className="fw-semibold">
+                        #{room.roomNumber || room.key}
+                      </td>
                       <td>{room.type || "—"}</td>
 
                       <td>
@@ -210,7 +209,9 @@ export default function Rooms() {
 
                           <button
                             className="btn btn-outline-warning btn-sm"
-                            onClick={() => navigate(`/admin/rooms/edit/${room.key}`)}
+                            onClick={() =>
+                              navigate(`/admin/rooms/edit/${room.key}`)
+                            }
                           >
                             Edit
                           </button>
@@ -220,7 +221,9 @@ export default function Rooms() {
                             onClick={() => onDelete(room.key)}
                             disabled={busyDeleteId === room.key}
                           >
-                            {busyDeleteId === room.key ? "Deleting..." : "Delete"}
+                            {busyDeleteId === room.key
+                              ? "Deleting..."
+                              : "Delete"}
                           </button>
                         </div>
                       </td>

@@ -11,6 +11,7 @@ import AddRoom from "./pages/admin/AddRoom";
 import RoomDetails from "./pages/admin/RoomDetails";
 import AdminLogin from "./pages/admin/AdminLogin";
 import ProtectedRoute from "./components/ProtectedRoute";
+import Bookings from "./pages/admin/Bookings";
 
 export default function App() {
   return (
@@ -46,10 +47,13 @@ export default function App() {
           <Route path="rooms/add" element={<AddRoom />} />
           <Route path="rooms/edit/:id" element={<AddRoom />} />
           <Route path="rooms/:id" element={<RoomDetails />} />
+
+          {/* Booking */}
+          <Route path="/admin/bookings" element={<Bookings />} />
         </Route>
 
         {/* Fallback */}
-        <Route path="*" element={<Navigate to="/admin/login" replace />} />
+        <Route path="bookings" element={<Bookings />} />
       </Routes>
     </BrowserRouter>
   );

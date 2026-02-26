@@ -3,6 +3,18 @@ import { useNavigate } from "react-router-dom";
 import "../../styles/users.css";
 import { deleteUserApi, fetchUsers } from "../../api/usersApi";
 
+function formatDate(value) {
+  if (!value) return "-";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleDateString();
+}
+
+// ✅ robust id getter (works with id/_id/userId/user_id)
+function getUserId(u) {
+  return u?.id || u?._id || u?.userId || u?.user_id;
+}
+
 export default function Users() {
   const navigate = useNavigate();
 
@@ -13,7 +25,6 @@ export default function Users() {
   const [deletingId, setDeletingId] = useState(null);
   const [error, setError] = useState("");
 
-  // ✅ Load users from backend
   useEffect(() => {
     let ignore = false;
 
@@ -24,17 +35,18 @@ export default function Users() {
 
         const data = await fetchUsers({ search: "" });
 
-        // supports both API shapes:
-        const list = Array.isArray(data) ? data : data.users;
+        const list = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.users)
+          ? data.users
+          : Array.isArray(data?.data)
+          ? data.data
+          : [];
 
-        if (!ignore) setUsers(list || []);
+        if (!ignore) setUsers(list);
       } catch (e) {
         if (!ignore) {
-          setError(
-            e?.response?.data?.message ||
-              e?.message ||
-              "Failed to load users."
-          );
+          setError(e?.response?.data?.message || e?.message || "Failed to load users.");
         }
       } finally {
         if (!ignore) setLoading(false);
@@ -47,17 +59,17 @@ export default function Users() {
     };
   }, []);
 
-  // ✅ Client-side filter (works even if backend doesn’t implement search)
   const filteredUsers = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return users;
 
     return users.filter((u) => {
-      const name = (u.name || "").toLowerCase();
-      const email = (u.email || "").toLowerCase();
-      const phone = (u.phone || "").toLowerCase();
-      const idProofType = (u.idProofType || u.id_proof_type || "").toLowerCase();
-      const idProofNumber = (u.idProofNumber || u.id_proof_number || "").toLowerCase();
+      const name = String(u?.name || "").toLowerCase();
+      const email = String(u?.email || "").toLowerCase();
+      const phone = String(u?.phone || "").toLowerCase();
+      const idProofType = String(u?.idProofType || u?.id_proof_type || "").toLowerCase();
+      const idProofNumber = String(u?.idProofNumber || u?.id_proof_number || "").toLowerCase();
+
       return (
         name.includes(q) ||
         email.includes(q) ||
@@ -68,23 +80,23 @@ export default function Users() {
     });
   }, [users, search]);
 
-  // ✅ Delete user (API)
   const handleDelete = async (id) => {
+    if (!id) return;
+
     const ok = window.confirm("Are you sure you want to delete this user?");
     if (!ok) return;
 
     try {
       setDeletingId(id);
+
+      // ✅ API call to backend
       await deleteUserApi(id);
 
-      // remove from UI
-      setUsers((prev) => prev.filter((u) => (u.id || u._id) !== id));
+      // ✅ UI remove (works for any id key)
+      setUsers((prev) => prev.filter((u) => String(getUserId(u)) !== String(id)));
     } catch (e) {
-      alert(
-        e?.response?.data?.message ||
-          e?.message ||
-          "Failed to delete user."
-      );
+      console.log("DELETE USER ERROR:", e?.response?.data || e);
+      alert(e?.response?.data?.message || e?.message || "Failed to delete user.");
     } finally {
       setDeletingId(null);
     }
@@ -92,13 +104,10 @@ export default function Users() {
 
   return (
     <div className="container-fluid px-3 px-lg-4 py-4">
-      {/* Header */}
       <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
         <div>
           <h3 className="fw-bold mb-1">Users</h3>
-          <p className="text-muted mb-0">
-            A list of all the users in your Elite Resort account.
-          </p>
+          <p className="text-muted mb-0">A list of all the users in your Elite Resort account.</p>
         </div>
 
         <input
@@ -110,7 +119,6 @@ export default function Users() {
         />
       </div>
 
-      {/* States */}
       {loading && (
         <div className="card soft-card p-4">
           <div className="text-muted">Loading users...</div>
@@ -156,42 +164,34 @@ export default function Users() {
 
               <tbody>
                 {filteredUsers.map((user) => {
-                  const id = user.id || user._id; // ✅ supports SQL id or Mongo _id
-                  const created =
-                    user.created ||
-                    user.createdAt ||
-                    user.created_at ||
-                    "";
+                  const id = getUserId(user);
+                  const created = user?.created || user?.createdAt || user?.created_at;
 
-                  const idProofType =
-                    user.idProofType || user.id_proof_type || "-";
-                  const idProofNumber =
-                    user.idProofNumber || user.id_proof_number || "-";
+                  const idProofType = user?.idProofType || user?.id_proof_type || "-";
+                  const idProofNumber = user?.idProofNumber || user?.id_proof_number || "-";
 
-                  const status = (user.status || "active").toLowerCase();
+                  const status = String(user?.status || "active").toLowerCase();
 
                   return (
-                    <tr key={id}>
+                    <tr key={id || Math.random()}>
                       <td>
                         <div className="d-flex align-items-center gap-3">
                           <div className="user-avatar">
                             <i className="bi bi-person" />
                           </div>
-                          <div className="fw-semibold">{user.name}</div>
+                          <div className="fw-semibold">{user?.name || "-"}</div>
                         </div>
                       </td>
 
-                      <td className="text-muted">{user.email}</td>
-                      <td className="text-muted">{user.phone}</td>
+                      <td className="text-muted">{user?.email || "-"}</td>
+                      <td className="text-muted">{user?.phone || "-"}</td>
 
                       <td>
                         <div className="fw-semibold">{idProofType}</div>
                         <div className="text-muted small">{idProofNumber}</div>
                       </td>
 
-                      <td className="text-muted">
-                        {created ? new Date(created).toLocaleDateString() : "-"}
-                      </td>
+                      <td className="text-muted">{formatDate(created)}</td>
 
                       <td>
                         <span
@@ -210,6 +210,7 @@ export default function Users() {
                         <button
                           className="btn btn-light btn-sm me-2 btn-action-view"
                           onClick={() => navigate(`/admin/users/${id}`)}
+                          disabled={!id}
                         >
                           <i className="bi bi-eye me-1" />
                           View
@@ -218,7 +219,7 @@ export default function Users() {
                         <button
                           className="btn btn-light btn-sm btn-action-delete"
                           onClick={() => handleDelete(id)}
-                          disabled={deletingId === id}
+                          disabled={!id || deletingId === id}
                         >
                           <i className="bi bi-trash me-1 text-danger" />
                           <span className="text-danger">

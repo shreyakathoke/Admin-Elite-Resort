@@ -1,13 +1,13 @@
-import api from "./api";
+import api from "./api"; // ✅ api.js must be in same folder: src/api/api.js
 
 export async function fetchUsers({ search = "" } = {}) {
-  const res = await api.get("/api/admin/users", {
+  const res = await api.get("/admin/users", {
     params: search ? { search } : {},
   });
-  return res.data; // expected: { users: [...] } OR [...]
+  return res.data; // supports {users:[...]} OR [...]
 }
 
-export async function deleteUserApi(id) {
-  const res = await api.delete(`/api/admin/users/${id}`);
+export async function deleteUserApi(userId) {
+  const res = await api.delete(`/admin/delete/${userId}`);
   return res.data;
 }

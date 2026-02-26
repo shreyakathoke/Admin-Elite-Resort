@@ -1,7 +1,7 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import "../../styles/roomDetails.css";
-import { getRoomById } from "./roomStore";
+import { getRoomById } from "../../api/roomsApi"; // ✅ real API
 
 function Item({ label, value }) {
   return (
@@ -18,7 +18,84 @@ export default function RoomDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const room = useMemo(() => getRoomById(id), [id]);
+  const [room, setRoom] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  // ✅ Load room from backend
+  useEffect(() => {
+    let active = true;
+
+    (async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const data = await getRoomById(id);
+        const r = data?.room ?? data;
+
+        if (!active) return;
+
+        // ✅ normalize different backend field names
+        const normalized = {
+          id: r?.roomId || r?._id || r?.id || id,
+          roomNo: r?.roomNumber ?? r?.roomNo ?? r?.number ?? "",
+          roomType: r?.type ?? r?.roomType ?? "",
+          price: r?.pricePerNight ?? r?.price ?? "",
+          capacity: r?.capacity ?? "",
+          availability:
+            typeof r?.available === "boolean"
+              ? r.available
+                ? "available"
+                : "unavailable"
+              : r?.availability
+              ? String(r.availability).toLowerCase()
+              : "available",
+          description: r?.description ?? "",
+          imageUrl: r?.imageUrl ?? r?.image ?? "",
+        };
+
+        setRoom(normalized);
+      } catch (err) {
+        console.error("GET ROOM DETAILS ERROR:", err?.response?.data || err);
+        if (!active) return;
+
+        setRoom(null);
+        setError(
+          err?.response?.data?.message ||
+            err?.response?.data?.error ||
+            "Failed to load room details."
+        );
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [id]);
+
+  const statusBadgeClass = useMemo(() => {
+    if (!room) return "";
+    return room.availability === "available"
+      ? "bg-success-subtle text-success"
+      : "bg-danger-subtle text-danger";
+  }, [room]);
+
+  if (loading) {
+    return (
+      <div className="container-fluid px-3 px-lg-4 py-4">
+        <button className="btn btn-light border" onClick={() => navigate(-1)}>
+          Back
+        </button>
+
+        <div className="card soft-card p-4 mt-3 text-center">
+          <div className="spinner-border" role="status" />
+          <div className="mt-3">Loading room details...</div>
+        </div>
+      </div>
+    );
+  }
 
   if (!room) {
     return (
@@ -26,9 +103,16 @@ export default function RoomDetails() {
         <button className="btn btn-light border" onClick={() => navigate(-1)}>
           Back
         </button>
+
         <div className="card soft-card p-4 mt-3">
           <h5 className="fw-bold mb-1">Room not found</h5>
-          <div className="text-muted">No room exists with id: {id}</div>
+          <div className="text-muted mb-2">No room exists with id: {id}</div>
+
+          {error && (
+            <div className="alert alert-danger mb-0" role="alert">
+              {error}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -57,13 +141,7 @@ export default function RoomDetails() {
           <div className="text-muted">All room information & preview.</div>
         </div>
 
-        <span
-          className={`badge rounded-pill px-3 py-2 ${
-            room.availability === "available"
-              ? "bg-success-subtle text-success"
-              : "bg-danger-subtle text-danger"
-          }`}
-        >
+        <span className={`badge rounded-pill px-3 py-2 ${statusBadgeClass}`}>
           {room.availability === "available" ? "Available" : "Unavailable"}
         </span>
       </div>
@@ -88,16 +166,20 @@ export default function RoomDetails() {
         {/* Details */}
         <div className="col-12 col-lg-7">
           <div className="card soft-card mb-4">
-            <div className="card-header soft-card-header fw-bold">
-              Room Information
-            </div>
+            <div className="card-header soft-card-header fw-bold">Room Information</div>
 
             <div className="card-body">
               <div className="row g-3">
-                <Item label="Room No" value={`#${room.roomNo}`} />
+                <Item label="Room No" value={room.roomNo ? `#${room.roomNo}` : "-"} />
                 <Item label="Room Type" value={room.roomType} />
-                <Item label="Price / Night" value={room.price ? `₹${room.price}` : "-"} />
-                <Item label="Capacity" value={room.capacity ? `${room.capacity} guests` : "-"} />
+                <Item
+                  label="Price / Night"
+                  value={room.price ? `₹${room.price}` : "-"}
+                />
+                <Item
+                  label="Capacity"
+                  value={room.capacity ? `${room.capacity} guests` : "-"}
+                />
               </div>
             </div>
           </div>

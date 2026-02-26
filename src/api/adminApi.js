@@ -22,7 +22,7 @@ export async function adminMe() {
 
 // ✅ Dashboard needs rooms list
 export async function adminGetRooms() {
-  const res = await api.get("/api/admin/rooms");
+  const res = await api.get("/api/admin/rooms/getallRooms");
   return res.data;
 }
 

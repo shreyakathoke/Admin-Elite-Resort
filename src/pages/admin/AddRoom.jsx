@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import "../../styles/addRoom.css";
-import { createRoom, deleteRoom, getRoomById, updateRoom } from "../../api/roomsApi";
+import {
+  createRoom,
+  deleteRoom,
+  getRoomById,
+  updateRoom,
+  uploadImageToS3,
+} from "../../api/roomsApi";
 
 const ROOM_TYPES = [
   "Deluxe Room",
@@ -24,23 +30,30 @@ export default function AddRoom() {
     capacity: "",
     availability: "available",
     description: "",
+    imageUrl: "", // ✅ store uploaded URL here
   });
 
+  const [imageFile, setImageFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
+
   const [touched, setTouched] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [loadingRoom, setLoadingRoom] = useState(false);
+  const [uploading, setUploading] = useState(false); // ✅ upload state
+  const [error, setError] = useState("");
 
-  // ✅ Load room in edit mode (supports {room:{}} or plain {})
+  // ✅ Load room in edit mode
   useEffect(() => {
     if (!isEdit) return;
 
     (async () => {
       setLoadingRoom(true);
+      setError("");
       try {
         const data = await getRoomById(id);
-
         const room = data?.room ?? data;
+
+        const imageUrl = room?.imageUrl || room?.image || room?.photo || "";
 
         setForm({
           roomNo: room?.roomNumber ?? room?.roomNo ?? room?.number ?? "",
@@ -56,15 +69,16 @@ export default function AddRoom() {
               ? String(room.availability).toLowerCase()
               : "available",
           description: room?.description ?? "",
+          imageUrl,
         });
 
-        if (room?.imageUrl) setPreviewUrl(room.imageUrl);
+        if (imageUrl) setPreviewUrl(imageUrl);
       } catch (err) {
         console.error("GET ROOM ERROR:", err?.response?.data || err);
         alert(
           err?.response?.data?.message ||
             err?.response?.data?.error ||
-            "Failed to load room. Check API route / token."
+            "Failed to load room."
         );
         navigate("/admin/rooms");
       } finally {
@@ -73,10 +87,12 @@ export default function AddRoom() {
     })();
   }, [isEdit, id, navigate]);
 
-  // cleanup blob preview
+  // ✅ cleanup blob preview
   useEffect(() => {
     return () => {
-      if (previewUrl && previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
+      if (previewUrl && previewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(previewUrl);
+      }
     };
   }, [previewUrl]);
 
@@ -96,6 +112,7 @@ export default function AddRoom() {
   function onChange(e) {
     const { name, value } = e.target;
     setForm((p) => ({ ...p, [name]: value }));
+    setError("");
   }
 
   function onBlur(e) {
@@ -105,7 +122,42 @@ export default function AddRoom() {
   function onImageChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    setImageFile(file);
+
+    // revoke old blob
+    if (previewUrl && previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
+
     setPreviewUrl(URL.createObjectURL(file));
+    setError("");
+  }
+
+  // ✅ Upload image to S3 and save URL
+  async function handleUploadImage() {
+    if (!imageFile) {
+      setError("Please select an image first.");
+      return;
+    }
+
+    setUploading(true);
+    setError("");
+    try {
+      const url = await uploadImageToS3(imageFile); // returns string URL
+      setForm((p) => ({ ...p, imageUrl: url }));
+      // preview should show actual S3 after upload
+      setPreviewUrl(url);
+      alert("Image uploaded successfully!");
+    } catch (err) {
+      console.error("UPLOAD ERROR:", err?.response?.data || err);
+      setError(
+        err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          err?.message ||
+          "Upload failed"
+      );
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function onSubmit(e) {
@@ -123,37 +175,32 @@ export default function AddRoom() {
     if (!isValid) return;
 
     setSubmitting(true);
+    setError("");
 
-    // ✅ Payload A (your current API)
-    const payloadA = {
+    // ✅ Room payload with imageUrl
+    const payload = {
       roomNumber: form.roomNo.trim(),
       type: form.roomType,
       pricePerNight: Number(form.price),
       capacity: Number(form.capacity),
       available: form.availability === "available",
       description: form.description.trim(),
+      imageUrl: form.imageUrl || "", // ✅ send uploaded URL
     };
 
-    // ✅ Payload B (alternate backend format)
-    const payloadB = {
-      roomNo: form.roomNo.trim(),
-      roomType: form.roomType,
-      price: Number(form.price),
-      capacity: Number(form.capacity),
-      availability: form.availability, // "available" | "unavailable"
-      description: form.description.trim(),
-    };
-
-    // embed fallback so roomsApi can retry automatically
-    payloadA.__fallbackB = payloadB;
-
+    // ✅ If user selected a file but forgot to upload, we auto-upload here
     try {
+      if (imageFile && !form.imageUrl) {
+        const url = await uploadImageToS3(imageFile);
+        payload.imageUrl = url;
+      }
+
       if (isEdit) {
-        await updateRoom(id, payloadA);
-        alert("Room updated successfully ");
+        await updateRoom(id, payload);
+        alert("Room updated successfully");
       } else {
-        await createRoom(payloadA);
-        alert("Room added successfully ");
+        await createRoom(payload);
+        alert("Room added successfully");
       }
 
       navigate("/admin/rooms");
@@ -167,7 +214,7 @@ export default function AddRoom() {
         message: err?.message,
       });
 
-      alert(
+      setError(
         err?.response?.data?.message ||
           err?.response?.data?.error ||
           err?.response?.data?.msg ||
@@ -185,13 +232,14 @@ export default function AddRoom() {
     if (!ok) return;
 
     setSubmitting(true);
+    setError("");
     try {
       await deleteRoom(id);
-      alert("Room deleted successfully ");
+      alert("Room deleted successfully");
       navigate("/admin/rooms");
     } catch (err) {
       console.error("DELETE ROOM ERROR:", err?.response?.data || err);
-      alert(err?.response?.data?.message || err?.response?.data?.error || "Failed to delete room.");
+      setError(err?.response?.data?.message || err?.response?.data?.error || "Failed to delete room.");
     } finally {
       setSubmitting(false);
     }
@@ -212,12 +260,237 @@ export default function AddRoom() {
     );
   }
 
-  // ✅ Keep your existing UI (I’m not changing your markup)
   return (
     <section className="add-room-sec">
       <div className="container py-5">
-        {/* --- your same JSX UI here --- */}
-        {/* Just ensure form onSubmit={onSubmit} and delete button calls onDelete */}
+        <div className="d-flex align-items-center justify-content-between mb-4">
+          <div>
+            <h3 className="mb-1">{isEdit ? "Edit Room" : "Add Room"}</h3>
+            <div className="text-muted small">Fill the details below.</div>
+          </div>
+
+          <div className="d-flex gap-2">
+            <button
+              type="button"
+              className="btn btn-outline-secondary"
+              onClick={() => navigate("/admin/rooms")}
+              disabled={submitting || uploading}
+            >
+              Back
+            </button>
+
+            {isEdit && (
+              <button
+                type="button"
+                className="btn btn-outline-danger"
+                onClick={onDelete}
+                disabled={submitting || uploading}
+              >
+                {submitting ? "Please wait..." : "Delete"}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {error && (
+          <div className="alert alert-danger py-2">
+            <i className="bi bi-exclamation-triangle me-2" />
+            {error}
+          </div>
+        )}
+
+        <div className="card add-room-card">
+          <div className="card-body p-4 p-md-5">
+            <form onSubmit={onSubmit} className="row g-3">
+              {/* Room No */}
+              <div className="col-md-6">
+                <label className="form-label">Room Number</label>
+                <input
+                  name="roomNo"
+                  value={form.roomNo}
+                  onChange={onChange}
+                  onBlur={onBlur}
+                  className={`form-control ${touched.roomNo && errors.roomNo ? "is-invalid" : ""}`}
+                  placeholder="e.g. 101"
+                />
+                {touched.roomNo && errors.roomNo && (
+                  <div className="invalid-feedback">{errors.roomNo}</div>
+                )}
+              </div>
+
+              {/* Room Type */}
+              <div className="col-md-6">
+                <label className="form-label">Room Type</label>
+                <select
+                  name="roomType"
+                  value={form.roomType}
+                  onChange={onChange}
+                  onBlur={onBlur}
+                  className={`form-select ${touched.roomType && errors.roomType ? "is-invalid" : ""}`}
+                >
+                  <option value="">Select type</option>
+                  {ROOM_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+                {touched.roomType && errors.roomType && (
+                  <div className="invalid-feedback">{errors.roomType}</div>
+                )}
+              </div>
+
+              {/* Price */}
+              <div className="col-md-6">
+                <label className="form-label">Price / Night</label>
+                <input
+                  type="number"
+                  name="price"
+                  value={form.price}
+                  onChange={onChange}
+                  onBlur={onBlur}
+                  className={`form-control ${touched.price && errors.price ? "is-invalid" : ""}`}
+                  placeholder="e.g. 2499"
+                />
+                {touched.price && errors.price && (
+                  <div className="invalid-feedback">{errors.price}</div>
+                )}
+              </div>
+
+              {/* Capacity */}
+              <div className="col-md-6">
+                <label className="form-label">Capacity</label>
+                <input
+                  type="number"
+                  name="capacity"
+                  value={form.capacity}
+                  onChange={onChange}
+                  onBlur={onBlur}
+                  className={`form-control ${touched.capacity && errors.capacity ? "is-invalid" : ""}`}
+                  placeholder="e.g. 2"
+                />
+                {touched.capacity && errors.capacity && (
+                  <div className="invalid-feedback">{errors.capacity}</div>
+                )}
+              </div>
+
+              {/* Availability */}
+              <div className="col-md-6">
+                <label className="form-label">Availability</label>
+                <select
+                  name="availability"
+                  value={form.availability}
+                  onChange={onChange}
+                  onBlur={onBlur}
+                  className={`form-select ${
+                    touched.availability && errors.availability ? "is-invalid" : ""
+                  }`}
+                >
+                  <option value="available">Available</option>
+                  <option value="unavailable">Unavailable</option>
+                </select>
+                {touched.availability && errors.availability && (
+                  <div className="invalid-feedback">{errors.availability}</div>
+                )}
+              </div>
+
+              {/* Image */}
+              <div className="col-md-6">
+                <label className="form-label">Room Image</label>
+                <input
+                  type="file"
+                  className="form-control"
+                  accept="image/*"
+                  onChange={onImageChange}
+                  disabled={uploading || submitting}
+                />
+
+                <div className="d-flex gap-2 mt-2">
+                  <button
+                    type="button"
+                    className="btn btn-outline-primary btn-sm"
+                    onClick={handleUploadImage}
+                    disabled={!imageFile || uploading || submitting}
+                  >
+                    {uploading ? "Uploading..." : "Upload Image"}
+                  </button>
+
+                  {form.imageUrl && (
+                    <span className="badge text-bg-success align-self-center">
+                      Uploaded
+                    </span>
+                  )}
+                </div>
+
+                {form.imageUrl && (
+                  <div className="small text-muted mt-1">
+                    Saved URL: <span style={{ wordBreak: "break-all" }}>{form.imageUrl}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Preview */}
+              {previewUrl && (
+                <div className="col-12">
+                  <div className="border rounded p-3">
+                    <div className="small text-muted mb-2">Preview</div>
+                    <img
+                      src={previewUrl}
+                      alt="preview"
+                      style={{
+                        width: "100%",
+                        maxHeight: 320,
+                        objectFit: "cover",
+                        borderRadius: 8,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Description */}
+              <div className="col-12">
+                <label className="form-label">Description</label>
+                <textarea
+                  name="description"
+                  value={form.description}
+                  onChange={onChange}
+                  onBlur={onBlur}
+                  className={`form-control ${
+                    touched.description && errors.description ? "is-invalid" : ""
+                  }`}
+                  rows={4}
+                  placeholder="Write something about the room..."
+                />
+                {touched.description && errors.description && (
+                  <div className="invalid-feedback">{errors.description}</div>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="col-12 d-flex gap-2 justify-content-end mt-3">
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary"
+                  onClick={() => navigate("/admin/rooms")}
+                  disabled={submitting || uploading}
+                >
+                  Cancel
+                </button>
+
+                <button type="submit" className="btn btn-primary" disabled={submitting || uploading}>
+                  {submitting ? "Saving..." : isEdit ? "Update Room" : "Add Room"}
+                </button>
+              </div>
+            </form>
+
+            {imageFile && (
+              <div className="text-muted small mt-3">
+                Selected file: <b>{imageFile.name}</b>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </section>
   );

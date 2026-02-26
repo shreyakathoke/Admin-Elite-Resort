@@ -6,6 +6,9 @@ const navItems = [
   { to: "/admin/users", label: "Users", icon: "bi-people" },
   { to: "/admin/contacts", label: "Contacts", icon: "bi-chat-dots" },
   { to: "/admin/rooms", label: "Rooms", icon: "bi-door-open" },
+
+  // ✅ NEW: Bookings
+  { to: "/admin/bookings", label: "Bookings", icon: "bi-journal-check" },
 ];
 
 function SidebarContent({ onNavigate }) {
@@ -13,6 +16,7 @@ function SidebarContent({ onNavigate }) {
 
   const logout = () => {
     localStorage.removeItem("admin_auth");
+    localStorage.removeItem("admin_token"); // ✅ recommended
     navigate("/admin/login");
   };
 
@@ -88,11 +92,7 @@ export default function AdminLayout() {
       </header>
 
       {/* Mobile offcanvas sidebar */}
-      <div
-        className="offcanvas offcanvas-start admin-offcanvas"
-        tabIndex="-1"
-        id="adminOffcanvas"
-      >
+      <div className="offcanvas offcanvas-start admin-offcanvas" tabIndex="-1" id="adminOffcanvas">
         <div className="offcanvas-header">
           <div className="d-flex align-items-center gap-2">
             <div className="brand-dot">
@@ -104,12 +104,7 @@ export default function AdminLayout() {
             </div>
           </div>
 
-          <button
-            type="button"
-            className="btn-close"
-            data-bs-dismiss="offcanvas"
-            aria-label="Close"
-          />
+          <button type="button" className="btn-close" data-bs-dismiss="offcanvas" aria-label="Close" />
         </div>
 
         <div className="offcanvas-body p-0">
